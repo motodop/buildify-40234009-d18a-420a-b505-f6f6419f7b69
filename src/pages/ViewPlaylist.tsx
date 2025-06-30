@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
@@ -6,6 +5,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import TagManager from '../components/TagManager';
 import PlatformIcon from '../components/PlatformIcon';
+import EmbeddedPlayer from '../components/EmbeddedPlayer';
 import { 
   ArrowLeft, 
   Play, 
@@ -16,7 +16,8 @@ import {
   Plus,
   Trash2,
   TagIcon,
-  Check
+  Check,
+  ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
@@ -141,14 +142,17 @@ const ViewPlaylist = () => {
         const videoId = extractVideoId(reel.url, reel.platform as SocialPlatform);
         return {
           ...reel,
-          videoId
+          videoId,
+          addedAt: new Date(reel.created_at)
         };
       });
 
       const fullPlaylist = {
         ...playlistData,
         reels: processedReels || [],
-        tags: playlistTags
+        tags: playlistTags,
+        createdAt: new Date(playlistData.created_at),
+        updatedAt: new Date(playlistData.updated_at)
       };
 
       setPlaylist(fullPlaylist);
@@ -164,21 +168,20 @@ const ViewPlaylist = () => {
 
   const playPause = () => {
     setIsPlaying(!isPlaying);
-    // In a real implementation, this would control the embedded player
   };
 
   const nextReel = () => {
     if (!playlist?.reels?.length) return;
-    setCurrentReelIndex((prev) => 
-      prev < playlist.reels.length - 1 ? prev + 1 : 0
-    );
+    const nextIndex = currentReelIndex < playlist.reels.length - 1 ? currentReelIndex + 1 : 0;
+    setCurrentReelIndex(nextIndex);
+    setIsPlaying(false); // Reset playing state when changing reels
   };
 
   const prevReel = () => {
     if (!playlist?.reels?.length) return;
-    setCurrentReelIndex((prev) => 
-      prev > 0 ? prev - 1 : playlist.reels.length - 1
-    );
+    const prevIndex = currentReelIndex > 0 ? currentReelIndex - 1 : playlist.reels.length - 1;
+    setCurrentReelIndex(prevIndex);
+    setIsPlaying(false); // Reset playing state when changing reels
   };
 
   const sharePlaylist = async () => {
@@ -231,9 +234,15 @@ const ViewPlaylist = () => {
         if (error) throw error;
 
         // Update local state
+        const newReel = {
+          ...data,
+          videoId,
+          addedAt: new Date(data.created_at)
+        };
+        
         const updatedPlaylist = {
           ...playlist,
-          reels: [...playlist.reels, {...data, videoId}]
+          reels: [...playlist.reels, newReel]
         };
         
         setPlaylist(updatedPlaylist);
@@ -377,6 +386,12 @@ const ViewPlaylist = () => {
       toast.error('Failed to update tags');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const openCurrentReelInNewTab = () => {
+    if (currentReel) {
+      window.open(currentReel.url, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -524,40 +539,29 @@ const ViewPlaylist = () => {
           >
             <div 
               ref={playerRef}
-              className="aspect-[9/16] max-h-[70vh] bg-muted rounded-lg flex items-center justify-center mb-4 overflow-hidden bg-card/50 backdrop-blur-sm border border-border/50"
+              className="aspect-[9/16] max-h-[70vh] bg-muted rounded-lg mb-4 overflow-hidden bg-card/50 backdrop-blur-sm border border-border/50"
             >
-              {/* In a real implementation, this would be an embedded player */}
-              <div className="text-center p-4 w-full h-full flex flex-col items-center justify-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30 flex items-center justify-center">
-                    {currentReel && <PlatformIcon platform={currentReel.platform} />}
-                  </div>
-                  <p className="font-medium">
-                    {currentReel?.author || (currentReel?.platform && `${currentReel.platform} user`)}
-                  </p>
+              {currentReel ? (
+                <EmbeddedPlayer 
+                  reel={currentReel}
+                  isPlaying={isPlaying}
+                  onPlayStateChange={setIsPlaying}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <p className="text-muted-foreground">No reel selected</p>
                 </div>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {currentReel?.videoId ? (
-                    <span className="px-2 py-0.5 bg-black/30 rounded">ID: {currentReel.videoId}</span>
-                  ) : (
-                    currentReel?.url && new URL(currentReel.url).hostname
-                  )}
-                </p>
-                <div className="w-full max-w-md mx-auto flex-1 bg-black/30 rounded flex items-center justify-center">
-                  <p className="text-xs text-muted-foreground">
-                    (Embedded player would appear here in a real implementation)
-                  </p>
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" onClick={prevReel} className="rounded-full">
+                <Button variant="outline" size="icon" onClick={prevReel} className="rounded-full" disabled={!currentReel}>
                   <SkipBack className="h-4 w-4" />
                 </Button>
                 <Button 
                   onClick={playPause}
+                  disabled={!currentReel}
                   className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-full"
                 >
                   {isPlaying ? (
@@ -567,23 +571,35 @@ const ViewPlaylist = () => {
                   )}
                   {isPlaying ? 'Pause' : 'Play'}
                 </Button>
-                <Button variant="outline" size="icon" onClick={nextReel} className="rounded-full">
+                <Button variant="outline" size="icon" onClick={nextReel} className="rounded-full" disabled={!currentReel}>
                   <SkipForward className="h-4 w-4" />
                 </Button>
               </div>
               
-              <Button 
-                variant="outline" 
-                onClick={sharePlaylist}
-                className="rounded-full"
-              >
-                {isCopied ? (
-                  <Check className="h-4 w-4 mr-2 text-green-500" />
-                ) : (
-                  <Share2 className="h-4 w-4 mr-2" />
+              <div className="flex items-center gap-2">
+                {currentReel && (
+                  <Button 
+                    variant="outline" 
+                    onClick={openCurrentReelInNewTab}
+                    className="rounded-full"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open Original
+                  </Button>
                 )}
-                {isCopied ? 'Copied!' : 'Share'}
-              </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={sharePlaylist}
+                  className="rounded-full"
+                >
+                  {isCopied ? (
+                    <Check className="h-4 w-4 mr-2 text-green-500" />
+                  ) : (
+                    <Share2 className="h-4 w-4 mr-2" />
+                  )}
+                  {isCopied ? 'Copied!' : 'Share'}
+                </Button>
+              </div>
             </div>
           </motion.div>
 
@@ -634,9 +650,12 @@ const ViewPlaylist = () => {
                   >
                     <Card 
                       className={`cursor-pointer border-border/50 bg-card/50 backdrop-blur-sm group hover:border-purple-500/50 transition-all duration-300 ${
-                        index === currentReelIndex ? 'border-purple-500' : ''
+                        index === currentReelIndex ? 'border-purple-500 bg-purple-500/5' : ''
                       }`}
-                      onClick={() => setCurrentReelIndex(index)}
+                      onClick={() => {
+                        setCurrentReelIndex(index);
+                        setIsPlaying(false); // Reset playing state when selecting a new reel
+                      }}
                     >
                       <CardContent className="p-3 flex items-center gap-3">
                         <div className={`flex items-center justify-center h-8 w-8 rounded-full ${

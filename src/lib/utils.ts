@@ -1,4 +1,3 @@
-
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -44,10 +43,14 @@ export function extractVideoId(url: string, platform: SocialPlatform): string | 
     
     switch(platform) {
       case 'youtube':
+        // Handle both youtube.com and youtu.be URLs
+        if (urlObj.hostname.includes('youtu.be')) {
+          return urlObj.pathname.slice(1); // Remove leading slash
+        }
         return new URLSearchParams(urlObj.search).get('v') || 
-               urlObj.pathname.split('/').filter(Boolean)[0]; // For youtu.be links
+               urlObj.pathname.split('/').filter(Boolean).pop() || null;
       case 'instagram':
-        // Example: https://www.instagram.com/reel/ABC123/
+        // Example: https://www.instagram.com/reel/ABC123/ or https://www.instagram.com/p/ABC123/
         const instaParts = urlObj.pathname.split('/').filter(Boolean);
         if (instaParts.includes('reel') || instaParts.includes('p')) {
           const idx = instaParts.indexOf('reel') !== -1 ? 
@@ -66,6 +69,12 @@ export function extractVideoId(url: string, platform: SocialPlatform): string | 
         // Example: https://www.facebook.com/watch/?v=1234567890
         return new URLSearchParams(urlObj.search).get('v') || 
                urlObj.pathname.split('/').filter(Boolean).pop() || null;
+      case 'twitter':
+        // Example: https://twitter.com/username/status/1234567890
+        const twitterParts = urlObj.pathname.split('/').filter(Boolean);
+        const statusIdx = twitterParts.indexOf('status');
+        return statusIdx !== -1 && statusIdx + 1 < twitterParts.length ? 
+               twitterParts[statusIdx + 1] : null;
       default:
         return null;
     }
@@ -116,7 +125,7 @@ export function extractAuthor(url: string, platform: SocialPlatform): string | n
         }
         return null;
       case 'youtube':
-        // For YouTube, we'd need to use the YouTube API
+        // For YouTube, we'd need to use the YouTube API to get channel info
         // This is a simplified placeholder
         return null;
       case 'facebook':
@@ -231,4 +240,46 @@ function fallbackCopyToClipboard(text: string): void {
   }
   
   document.body.removeChild(textArea);
+}
+
+// Validate URL format
+export function isValidUrl(string: string): boolean {
+  try {
+    new URL(string);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// Get platform-specific embed parameters
+export function getPlatformEmbedParams(platform: SocialPlatform): Record<string, any> {
+  switch (platform) {
+    case 'youtube':
+      return {
+        autoplay: 0,
+        rel: 0,
+        modestbranding: 1,
+        controls: 1,
+        showinfo: 0
+      };
+    case 'instagram':
+      return {
+        hidecaption: false,
+        maxwidth: 540
+      };
+    case 'tiktok':
+      return {
+        blockId: 'tiktok-embed',
+        hideCaption: false
+      };
+    case 'facebook':
+      return {
+        show_text: false,
+        width: 560,
+        autoplay: false
+      };
+    default:
+      return {};
+  }
 }
